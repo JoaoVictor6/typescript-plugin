@@ -3,58 +3,35 @@ import ts from "typescript";
 
 const regexEscapedValuesOnJsx = /\{([^}]+)\}/g;
 
+const hasSafeAttribute = async (node: ts.Node) => {
+  return await new Promise<boolean>(r => {
+    node.forEachChild(node => {
+      if(node.kind === ts.SyntaxKind.JsxAttributes) {
+        node.forEachChild(node => {
+          if(node.kind === ts.SyntaxKind.JsxAttribute) {
+            const { name } = node as ts.JsxAttribute
+            r(name.getText() === 'safe')
+          }
+        })
+      }
+    })
+    r(false)
+  })
+}
+
 export function delint(sourceFile: ts.SourceFile) {
   delintNode(sourceFile);
 
   function delintNode(node: ts.Node) {
     switch (node.kind) {
-      case ts.SyntaxKind.ForStatement:
-      case ts.SyntaxKind.ForInStatement:
-      case ts.SyntaxKind.WhileStatement:
-      case ts.SyntaxKind.DoStatement:
-        if ((node as ts.IterationStatement).statement.kind !== ts.SyntaxKind.Block) {
-          report(
-            node,
-            'A looping statement\'s contents should be wrapped in a block body.'
-          );
-        }
-        break;
-      case ts.SyntaxKind.IfStatement:
-        const ifStatement = node as ts.IfStatement;
-        if (ifStatement.thenStatement.kind !== ts.SyntaxKind.Block) {
-          report(ifStatement.thenStatement, 'An if statement\'s contents should be wrapped in a block body.');
-        }
-        if (
-          ifStatement.elseStatement &&
-          ifStatement.elseStatement.kind !== ts.SyntaxKind.Block &&
-          ifStatement.elseStatement.kind !== ts.SyntaxKind.IfStatement
-        ) {
-          report(
-            ifStatement.elseStatement,
-            'An else statement\'s contents should be wrapped in a block body.'
-          );
-        }
-        break;
-      case ts.SyntaxKind.BinaryExpression:
-        const op = (node as ts.BinaryExpression).operatorToken.kind;
-        if (op === ts.SyntaxKind.EqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken) {
-          report(node, 'Use \'===\' and \'!==\'.');
-        }
-        break;
       case ts.SyntaxKind.JsxElement:
-        const result = regexEscapedValuesOnJsx.test(node.getFullText())
-        console.log(node.getChildren()[0].getFullText())
-        // console.log(node.parent)
+        const [ jsxOpeningElementNode, syntaxListNode ] = node.getChildren()
+        const hasJsxExpression = syntaxListNode.getChildren().some(node => node.kind === ts.SyntaxKind.JsxExpression)
+        if(!hasJsxExpression) break
 
-        break 
-        case ts.SyntaxKind.JsxOpeningElement:
-          //@ts-ignore
-            console.log(node.parent.openingElement)
-          // @ts-ignore
-          let attributeName = node.getChildren()[0].escapedText
-          if(attributeName === 'safe') {
-            // console.log(node)
-          }
+        hasSafeAttribute(jsxOpeningElementNode).then(hasSafeAttribute => {
+          if(!hasSafeAttribute) report(jsxOpeningElementNode, 'Should be has a `safe` attribute')
+        })
         break
     }
 
